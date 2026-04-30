@@ -3,6 +3,7 @@ from .views import (
     InitiatePaymentView,
     PaymentDetailView,
     PaymentListView,
+    MpesaCallbackView,
 )
 
 app_name = 'payments'
@@ -16,4 +17,6 @@ urlpatterns = [
 
     # Get specific payment by internal reference (UUID)
     path('payments/<uuid:reference>/', PaymentDetailView.as_view(), name='detail'),
+    
+    path('payments/callback/', MpesaCallbackView.as_view(), name='callback'),
 ]
