@@ -14,6 +14,10 @@ from .utils import success_response, error_response
 
 from .mpesa_service import MpesaService, MpesaError
 
+from .models import Payment, PaymentAttempt, CallbackLog
+from .callback_processor import CallbackProcessor
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -197,3 +201,64 @@ class PaymentListView(APIView):
             },
             message="Payments retrieved successfully.",
         )
+        
+        
+class MpesaCallbackView(APIView):
+    """
+    POST /api/v1/payments/callback/
+
+    Receives payment results from M-Pesa Daraja.
+
+    CRITICAL RULES for this endpoint:
+    1. Always return HTTP 200 — non-200 makes M-Pesa retry indefinitely
+    2. Write raw payload to DB FIRST before any processing
+    3. Never trust the payload — validate structure before using it
+    4. Process must be idempotent — safe to call multiple times
+    """
+
+    # M-Pesa posts to this endpoint — Django's CSRF must not block it
+    # We'll add IP-based security in Phase 9 instead
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        # ── Step 1: Write raw payload immediately ────────────────────────────
+        # Do this BEFORE anything else. If we crash after this line,
+        # we still have the data and can reprocess.
+        ip_address = self._get_ip(request)
+
+        callback_log = CallbackLog.objects.create(
+            raw_payload=request.data,
+            ip_address=ip_address,
+            processed=False,
+        )
+
+        logger.info(
+            f"Callback received | CallbackLog.id={callback_log.id} | "
+            f"ip={ip_address}"
+        )
+
+        # ── Step 2: Process the callback ─────────────────────────────────────
+        processor = CallbackProcessor()
+        success, message = processor.process(callback_log)
+
+        if success:
+            logger.info(f"Callback processed successfully: {message}")
+        else:
+            logger.error(f"Callback processing failed: {message}")
+
+        # ── Step 3: Always return 200 to M-Pesa ──────────────────────────────
+        # Even if processing failed internally, we return 200.
+        # Why? If we return 4xx/5xx, M-Pesa will retry the same callback
+        # repeatedly — creating more noise. We've stored it safely in
+        # CallbackLog and can reprocess it manually or via a scheduled job.
+        return Response(
+            {"ResultCode": 0, "ResultDesc": "Accepted"},
+            status=http_status.HTTP_200_OK,
+        )
+
+    def _get_ip(self, request):
+        forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if forwarded_for:
+            return forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')        
