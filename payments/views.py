@@ -12,6 +12,8 @@ from .serializers import (
 )
 from .utils import success_response, error_response
 
+from .mpesa_service import MpesaService, MpesaError
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,25 +28,23 @@ class InitiatePaymentView(APIView):
     For now, it validates and stores — proving the API contract works.
     """
 
+
     def post(self, request):
         serializer = InitiatePaymentSerializer(data=request.data)
 
         if not serializer.is_valid():
             logger.warning(
                 "Invalid payment initiation request",
-                extra={"errors": serializer.errors, "ip": self._get_ip(request)}
+                extra={"errors": serializer.errors}
             )
             return error_response(
                 message="Invalid payment data.",
                 errors=serializer.errors,
-                status=http_status.HTTP_400_BAD_REQUEST,
             )
 
         validated = serializer.validated_data
 
         # ── Idempotency check ────────────────────────────────────────────────
-        # If the same external_reference + source_system already has a
-        # PENDING or SUCCESS payment, don't create a duplicate.
         existing = Payment.objects.filter(
             external_reference=validated['external_reference'],
             source_system=validated['source_system'],
@@ -52,17 +52,12 @@ class InitiatePaymentView(APIView):
         ).first()
 
         if existing:
-            logger.info(
-                f"Duplicate payment request blocked: "
-                f"{validated['source_system']} / {validated['external_reference']}"
-            )
             return success_response(
                 data=PaymentSerializer(existing).data,
                 message="Payment already exists for this reference.",
-                status=http_status.HTTP_200_OK,
             )
 
-        # ── Create Payment ───────────────────────────────────────────────────
+        # ── Create Payment record ────────────────────────────────────────────
         payment = Payment.objects.create(
             amount=validated['amount'],
             phone_number=validated['phone_number'],
@@ -73,29 +68,61 @@ class InitiatePaymentView(APIView):
         )
 
         # ── Create first PaymentAttempt ──────────────────────────────────────
-        # attempt_number=1 because this is the first try
-        PaymentAttempt.objects.create(
+        attempt = PaymentAttempt.objects.create(
             payment=payment,
             attempt_number=1,
             status=PaymentAttempt.Status.INITIATED,
         )
 
-        logger.info(
-            f"Payment initiated: {payment.reference} | "
-            f"{payment.source_system} | KES {payment.amount}"
-        )
+        # ── Trigger STK Push ─────────────────────────────────────────────────
+        mpesa = MpesaService()
+        stk_result = mpesa.initiate_stk_push(payment, attempt)
 
-        # Phase 4: STK Push will be triggered here
-        # mpesa_service.initiate_stk_push(payment)
+        if stk_result["success"]:
+            # Store M-Pesa's CheckoutRequestID — we need this to match
+            # the incoming callback to this specific attempt
+            attempt.mpesa_checkout_request_id = stk_result["checkout_request_id"]
+            attempt.response_payload = stk_result["response_payload"]
+            attempt.status = PaymentAttempt.Status.INITIATED
+            attempt.save()
 
-        return success_response(
-            data=PaymentSerializer(payment).data,
-            message="Payment initiated successfully. Awaiting M-Pesa confirmation.",
-            status=http_status.HTTP_201_CREATED,
-        )
+            logger.info(
+                f"STK Push sent | reference={payment.reference} | "
+                f"checkout_id={stk_result['checkout_request_id']}"
+            )
+
+            return success_response(
+                data=PaymentSerializer(payment).data,
+                message=(
+                    "STK Push sent. Customer should receive a prompt on "
+                    "their phone to enter M-Pesa PIN."
+                ),
+                status=http_status.HTTP_201_CREATED,
+            )
+
+        else:
+            # STK Push failed — mark attempt as failed
+            # Payment stays PENDING — retry logic in Phase 6 will handle it
+            attempt.status = PaymentAttempt.Status.FAILED
+            attempt.response_payload = stk_result["response_payload"]
+            attempt.error_message = stk_result["error_message"]
+            attempt.save()
+
+            # Mark payment failed immediately (retry will re-open it)
+            payment.status = Payment.Status.FAILED
+            payment.save()
+
+            logger.error(
+                f"STK Push failed | reference={payment.reference} | "
+                f"reason={stk_result['error_message']}"
+            )
+
+            return error_response(
+                message=f"Failed to initiate M-Pesa payment: {stk_result['error_message']}",
+                status=http_status.HTTP_502_BAD_GATEWAY,
+            )
 
     def _get_ip(self, request):
-        """Extract real IP, accounting for reverse proxies."""
         forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if forwarded_for:
             return forwarded_for.split(',')[0].strip()
