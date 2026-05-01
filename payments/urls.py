@@ -5,7 +5,10 @@ from .views import (
     PaymentListView,
     MpesaCallbackView,
     PaymentStatusView,
+    HealthCheckView,
 )
+
+
 
 app_name = 'payments'
 
@@ -21,4 +24,5 @@ urlpatterns = [
     
     path('payments/callback/', MpesaCallbackView.as_view(), name='callback'),
     path('payments/<uuid:reference>/status/', PaymentStatusView.as_view(), name='status'),
+    path('health/',                             HealthCheckView.as_view(),        name='health'),
 ]

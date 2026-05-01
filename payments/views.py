@@ -3,6 +3,8 @@ from rest_framework.views import APIView
 from rest_framework import status as http_status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from .health import HealthChecker
+from rest_framework.decorators import api_view
 
 from .models import Payment, PaymentAttempt, CallbackLog
 from .serializers import (
@@ -175,4 +177,32 @@ class PaymentStatusView(APIView):
         return success_response(
             data=data,
             message="Payment status retrieved.",
-        )                                
+        )
+        
+
+class HealthCheckView(APIView):
+    """
+    GET /api/v1/health/
+
+    Public endpoint — no API key required.
+    Returns 200 if healthy, 503 if unhealthy.
+
+    Used by:
+    - Load balancers to determine if instance should receive traffic
+    - Monitoring systems (UptimeRobot, Pingdom, etc.)
+    - Your own peace of mind
+    """
+    authentication_classes = []
+    permission_classes     = []
+
+    def get(self, request):
+        checker = HealthChecker()
+        report  = checker.run_all_checks()
+
+        http_status_code = (
+            http_status.HTTP_200_OK
+            if report['status'] == 'healthy'
+            else http_status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+        return Response(report, status=http_status_code)                                        
