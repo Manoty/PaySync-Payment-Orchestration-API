@@ -16,6 +16,7 @@ from .mpesa_service import MpesaService, MpesaError
 
 from .models import Payment, PaymentAttempt, CallbackLog
 from .callback_processor import CallbackProcessor
+from .status_normalizer import StatusNormalizerFactory
 
 
 logger = logging.getLogger(__name__)
@@ -105,24 +106,33 @@ class InitiatePaymentView(APIView):
             )
 
         else:
-            # STK Push failed — mark attempt as failed
-            # Payment stays PENDING — retry logic in Phase 6 will handle it
-            attempt.status = PaymentAttempt.Status.FAILED
-            attempt.response_payload = stk_result["response_payload"]
-            attempt.error_message = stk_result["error_message"]
-            attempt.save()
+            # Normalize the initiation failure
+            normalizer = StatusNormalizerFactory.get('mpesa')
+            normalized = normalizer.normalize_stk_initiation_failure(
+                error_message=stk_result["error_message"]
+            )
 
-            # Mark payment failed immediately (retry will re-open it)
-            payment.status = Payment.Status.FAILED
-            payment.save()
+            attempt.status           = PaymentAttempt.Status.FAILED
+            attempt.response_payload = stk_result["response_payload"]
+            attempt.error_message    = normalized.reason
+            attempt.save(update_fields=['status', 'response_payload', 'error_message'])
+
+            # Schedule retry or permanently fail based on normalizer decision
+            from .retry_service import RetryService
+            retry_service = RetryService()
+
+            if normalized.is_retryable:
+                retry_service.schedule_retry(payment)
+            else:
+                retry_service._mark_permanently_failed(payment)
 
             logger.error(
-                f"STK Push failed | reference={payment.reference} | "
-                f"reason={stk_result['error_message']}"
+                f"STK Push initiation failed | reference={payment.reference} | "
+                f"retryable={normalized.is_retryable} | reason={normalized.reason}"
             )
 
             return error_response(
-                message=f"Failed to initiate M-Pesa payment: {stk_result['error_message']}",
+                message=normalized.reason,
                 status=http_status.HTTP_502_BAD_GATEWAY,
             )
 
