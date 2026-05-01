@@ -104,6 +104,8 @@ class PaymentSerializer(serializers.ModelSerializer):
             'phone_number',
             'status',
             'provider',
+            'retry_count',       
+            'next_retry_at',      
             'attempts',
             'created_at',
             'updated_at',
