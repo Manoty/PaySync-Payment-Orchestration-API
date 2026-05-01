@@ -20,6 +20,14 @@ class Payment(models.Model):
 
     class Provider(models.TextChoices):
         MPESA = 'mpesa', 'M-Pesa'
+        
+    MAX_RETRY_ATTEMPTS = 3   
+    
+    # --- Retry control fields ---
+    retry_count = models.PositiveIntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    is_processing = models.BooleanField(default=False, db_index=True)
+
 
     # Internal unique identifier — this is what PaySync uses
     reference = models.UUIDField(
