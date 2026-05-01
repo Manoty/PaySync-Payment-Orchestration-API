@@ -63,7 +63,7 @@ class MpesaService:
         }
 
         try:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=getattr(settings, 'MPESA_TOKEN_TIMEOUT', 15), )
             response.raise_for_status()
             token = response.json().get('access_token')
 
@@ -183,7 +183,7 @@ class MpesaService:
                 url,
                 json=payload,
                 headers=headers,
-                timeout=30,
+                timeout=getattr(settings, 'MPESA_REQUEST_TIMEOUT', 30),
             )
 
             response_data = response.json()
