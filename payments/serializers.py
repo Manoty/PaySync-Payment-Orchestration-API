@@ -1,9 +1,5 @@
 from rest_framework import serializers
-from .validators import (
-    validate_and_normalize_phone,
-    validate_payment_amount,
-    validate_external_reference,
-)
+from .models import Payment, PaymentAttempt
 
 
 class InitiatePaymentSerializer(serializers.Serializer):
@@ -19,14 +15,32 @@ class InitiatePaymentSerializer(serializers.Serializer):
         choices=['tixora', 'scott'],
     )
 
+    # ✅ Inline validation (replaces validators.py)
+
     def validate_phone_number(self, value):
-        return validate_and_normalize_phone(value)
+        value = value.strip().replace("+", "")
+
+        if value.startswith("07"):
+            value = "254" + value[1:]
+
+        if not value.startswith("254") or len(value) != 12:
+            raise serializers.ValidationError(
+                "Phone number must be in format 2547XXXXXXXX"
+            )
+
+        return value
 
     def validate_amount(self, value):
-        return validate_payment_amount(value)
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be greater than 0.")
+        return value
 
     def validate_external_reference(self, value):
-        return validate_external_reference(value)
+        if len(value) < 5:
+            raise serializers.ValidationError(
+                "External reference too short."
+            )
+        return value
 
 class PaymentAttemptSerializer(serializers.ModelSerializer):
     """Nested serializer — shown inside payment detail responses."""
