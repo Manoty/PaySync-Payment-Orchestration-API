@@ -78,7 +78,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
     ],
+    'EXCEPTION_HANDLER': 'paysync_backend.error_handlers.paysync_exception_handler',
 }
+
 
 # ─── M-Pesa Daraja ────────────────────────────────────────────────────────────
 MPESA_CONSUMER_KEY    = os.getenv('MPESA_CONSUMER_KEY', '')
