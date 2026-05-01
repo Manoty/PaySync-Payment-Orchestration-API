@@ -19,8 +19,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Third-party
     'rest_framework',
-    # PaySync apps
     'payments',
+    'authentication'
 ]
 
 MIDDLEWARE = [
