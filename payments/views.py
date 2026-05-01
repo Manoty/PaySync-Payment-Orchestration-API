@@ -271,4 +271,70 @@ class MpesaCallbackView(APIView):
         forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if forwarded_for:
             return forwarded_for.split(',')[0].strip()
-        return request.META.get('REMOTE_ADDR')        
+        return request.META.get('REMOTE_ADDR')   
+    
+class PaymentStatusView(APIView):
+    """
+    GET /api/v1/payments/<reference>/status/
+
+    Minimal status check — the most called endpoint in the system.
+    Returns only what external systems need to act on:
+    - What is the status?
+    - Why did it fail (if failed)?
+    - Is a retry coming?
+
+    Designed to be called in a polling loop by Tixora/Scott
+    while waiting for M-Pesa confirmation.
+    """
+
+    def get(self, request, reference):
+        payment = get_object_or_404(Payment, reference=reference)
+
+        # Build a minimal, flat response — no nested attempts
+        data = {
+            "reference": str(payment.reference),
+            "external_reference": payment.external_reference,
+            "source_system": payment.source_system,
+            "status": payment.status,
+            "amount": str(payment.amount),
+            "retry_count": payment.retry_count,
+            "next_retry_at": (
+                payment.next_retry_at.isoformat()
+                if payment.next_retry_at else None
+            ),
+        }
+
+        # Include failure reason from latest attempt if failed
+        if payment.status == Payment.Status.FAILED:
+            latest_attempt = (
+                payment.attempts
+                .filter(status=PaymentAttempt.Status.FAILED)
+                .order_by('-attempt_number')
+                .first()
+            )
+            if latest_attempt:
+                data["failure_reason"] = latest_attempt.error_message
+
+        # Include a consumer-friendly status message
+        data["message"] = self._status_message(payment)
+
+        return success_response(
+            data=data,
+            message="Payment status retrieved.",
+        )
+
+    def _status_message(self, payment):
+        """
+        Human-readable status message for the consumer system.
+        No M-Pesa codes, no technical jargon.
+        """
+        messages = {
+            Payment.Status.PENDING: (
+                "Payment is pending. Waiting for customer to complete M-Pesa prompt."
+                if not payment.next_retry_at
+                else f"Previous attempt failed. Retry scheduled."
+            ),
+            Payment.Status.SUCCESS: "Payment completed successfully.",
+            Payment.Status.FAILED:  "Payment failed. No further retries will be made.",
+        }
+        return messages.get(payment.status, "Unknown status.")         
