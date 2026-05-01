@@ -1,6 +1,8 @@
 import logging
 from django.db import transaction
 from .models import Payment, PaymentAttempt, CallbackLog
+from .retry_service import RetryService, PERMANENT_FAILURE_CODES
+
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +159,8 @@ class CallbackProcessor:
 
         return True, f"Payment {payment.reference} marked SUCCESS."
 
+
+    
     def _handle_failure(self, callback_log, attempt, payment, result_code, result_desc):
         """Payment failed or was cancelled. Determine if permanent."""
 
