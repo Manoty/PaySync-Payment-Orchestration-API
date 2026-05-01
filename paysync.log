@@ -1,0 +1,9 @@
+[2026-04-30 16:34:55] [INFO] [payments.views] Payment initiated: 22aa63bf-f851-46ba-a022-ec8d74550867 | tixora | KES 500.00
+[2026-04-30 16:35:20] [INFO] [payments.views] Duplicate payment request blocked: tixora / ORDER_001
+[2026-04-30 16:35:38] [INFO] [payments.views] Payment initiated: 63b2b7b9-1b4b-4cb8-b664-e1abceb38e8d | scott | KES 250.00
+[2026-04-30 16:36:41] [WARNING] [payments.views] Invalid payment initiation request
+[2026-04-30 17:06:42] [INFO] [payments.mpesa_service] M-Pesa access token fetched successfully.
+[2026-04-30 17:06:42] [INFO] [payments.mpesa_service] Sending STK Push | reference=039e56fa-dcf3-47e3-b62b-9c76c7c3a24e | phone=254708374149 | amount=1.00 | attempt=1
+[2026-04-30 17:06:44] [INFO] [payments.mpesa_service] Daraja raw response: {'MerchantRequestID': '4038-4fda-9c69-9b31e58c593334818', 'CheckoutRequestID': 'ws_CO_30042026170644283708374149', 'ResponseCode': '0', 'ResponseDescription': 'Success. Request accepted for processing', 'CustomerMessage': 'Success. Request accepted for processing'}
+[2026-04-30 17:06:44] [INFO] [payments.mpesa_service] STK Push accepted | CheckoutRequestID=ws_CO_30042026170644283708374149
+[2026-04-30 17:06:44] [INFO] [payments.views] STK Push sent | reference=039e56fa-dcf3-47e3-b62b-9c76c7c3a24e | checkout_id=ws_CO_30042026170644283708374149

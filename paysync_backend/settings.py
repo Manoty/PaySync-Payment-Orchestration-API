@@ -33,6 +33,11 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.ngrok.io',
+    'https://*.safaricom.co.ke',
+]
+
 ROOT_URLCONF = 'paysync_backend.urls'
 
 TEMPLATES = [
